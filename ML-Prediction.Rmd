@@ -1,0 +1,204 @@
+---
+title: "Machine Learning Project"
+author: "Erick Yegon"
+date: "`r Sys.Date()`"
+output:
+  #pdf_document: default
+  html_document: default
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [websit](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+##Data
+
+The training data for this project are available here: [train_data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here: [test_data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The data for this project come from this source: [source](http://groupware.les.inf.puc-rio.br/har). If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+##What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-). You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+# Below we carry out some preliminary Work
+## *Reproduceability*
+
+An overall pseudo-random number generator seed was set at 1234 for all code. In order to reproduce the results below, the same seed should be used. Different packages were downloaded and installed, such as caret and randomForest. These should also be installed in order to reproduce the results below (please see code below for ways and syntax to do so).
+##How the model was built
+
+Our outcome variable is classe, a factor variable with 5 levels. For this data set, “participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+exactly according to the specification (Class A)
+
+    * throwing the elbows to the front (Class B)
+
+    * lifting the dumbbell only halfway (Class C)
+
+    * lowering the dumbbell only halfway (Class D)
+
+    * throwing the hips to the front (Class E)?
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes." [1] Prediction evaluations will be based on maximizing the accuracy and minimizing the out-of-sample error. All other available variables after cleaning will be used for prediction. Two models will be tested using decision tree and random forest algorithms. The model with the highest accuracy will be chosen as our final model.
+
+## *Cross-validation*
+
+We will perform cross-validation by subsampling our training data set randomly without replacement into 2 subsamples: subTraining data (75% of the original Training data set) and subTesting data (25%). Our models will be fitted on the subtraining data set, and tested on the subtesting data. Once the most accurate model is choosen, it will be tested on the original Testing data set.
+
+## *Expected out-of-sample error*
+
+
+## *Loading required packages, libraries and setting seed*
+
+Installing packages, loading libraries, and setting the seed for reproduceability:
+
+Set working directory
+```{r}
+setwd("C:/Users/Erick Yegon/Dropbox/My PC (DESKTOP-1I4SCDT)/Desktop/Prediction")
+```
+
+Load required R packages and set a seed.
+
+```{r library }
+RequiredPackages <- c("caret","randomForest","rpart","rpart.plot","RColorBrewer","rattle","corrplot")
+for (i in RequiredPackages) { #Installs packages if not yet installed
+    if (!require(i, character.only = TRUE)) install.packages(i)
+}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(RColorBrewer)
+library(rattle)
+set.seed(2254)
+```
+
+```{r}
+url_train <-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_quiz  <-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+data_train <-read.csv(url(url_train), strip.white = TRUE, 
+                      na.strings = c("NA",""))
+data_quiz  <-read.csv(url(url_quiz),  
+                      strip.white = TRUE, na.strings = c("NA",""))
+
+
+```
+
+Checking the dimensions of the data
+```{r}
+dim(data_train)[1] 
+
+dim(data_quiz)[1]  
+
+```
+Create two partitions (75% and 25%) within the original training dataset.
+
+```{r}
+in_train  <-createDataPartition(data_train$classe, p=0.75, list=FALSE)
+
+train_set <-data_train[ in_train, ]
+test_set  <-data_train[-in_train, ]
+dim(train_set)
+dim(test_set)
+```
+
+The two datasets (train_setandtest_set) have a large number ofNAvalues as well as near-zero-variance (NZV) variables. Both will be removed together with their ID variables.
+
+```{r}
+nzv_var <-nearZeroVar(train_set)
+
+train_set <-train_set[ , -nzv_var]
+
+test_set  <-test_set [ , -nzv_var]
+
+dim(train_set)
+
+dim(test_set)
+```
+
+Remove variables that are mostly NA. A threshlod of 95 % is selected.
+```{r}
+na_var <-sapply(train_set, function(x) mean(is.na(x))) > 0.95
+
+train_set <-train_set[ , na_var == FALSE]
+
+test_set  <-test_set [ , na_var == FALSE]
+
+dim(train_set)
+
+dim(test_set)
+```
+Since columns 1 to 5 are identification variables only, they will be removed as well.
+
+```{r}
+train_set <-train_set[ , -(1:5)]
+
+test_set  <-test_set [ , -(1:5)]
+
+dim(train_set)
+
+dim(test_set)
+```
+The number of variables for the analysis has been reduced from the original 160 down to 54.
+
+# Correlation Analysis
+
+Correlation analysis between the variables before the modeling work itself is done. The “FPC” is used as the first principal component order
+```{r}
+corr_matrix <-cor(train_set[ , -54])
+
+corrplot(corr_matrix, order = "FPC", method = "circle", type = "lower",tl.cex = 0.6, tl.col = rgb(0, 0, 0))
+
+```
+
+If two variables are highly correlated their colors are either dark blue (for a positive correlation) or dark red (for a negative correlations). Because there are only few strong correlations among the input variables, the Principal Components Analysis (PCA) will not be performed in this analysis. Instead, a few different prediction models will be built to have a better accuracy.
+
+# Prediction Models
+
+Decision Tree Model
+```{r}
+set.seed(2222)
+fit_decision_tree <-rpart(classe ~ ., data = train_set, method="class")
+fancyRpartPlot(fit_decision_tree)
+
+
+```
+
+Predictions of the decision tree model ontest_set.predict_decision_tree 
+```{r}
+predict_decision_tree <-predict(fit_decision_tree, newdata = test_set, type="class")
+
+
+conf_matrix_decision_tree <-confusionMatrix(predict_decision_tree, factor(test_set$classe))
+
+conf_matrix_decision_tree
+
+
+```
+
+
+The predictive accuracy of the decision tree model is relatively low at 75.2 %.Plot the predictive accuracy of the decision tree model.
+
+```{r}
+print(summary(fit_decision_tree ))
+```
+
+The above list shows the ranking of variables in our GBM. We see that num_window, roll_belt, and pitch_forearm are the most performant ones. We can checkout a few plots demonstrating their power:
+
+```{r}
+qplot(num_window, roll_belt    , data = train_set, col = classe)
+```
+
+```{r}
+qplot(num_window, pitch_forearm, data = train_set, col = classe)
+
+
+```
+
+```{r}
+qplot(roll_belt , pitch_forearm, data = train_set, col = classe)
+```
+
